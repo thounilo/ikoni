@@ -1,0 +1,9 @@
+{
+  "name": "ikoni",
+  "main": "ikoni.js",
+  "type": "module",
+  "dependencies": {
+    "fs-extra": "^10.1.0",
+    "mini-svg-data-uri": "^1.4.4"
+  }
+}

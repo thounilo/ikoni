@@ -1,20 +1,11 @@
 import Fs from 'fs-extra'
 import svgDataUri from 'mini-svg-data-uri'
-
-async function fetchJSON(url, opts = {}) {
-    const options = Object.assign({
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
-    }, opts)
-    return await (await fetch(url, options)).json()
-}
+import { saveFile, fetchJSON, generateCustomData } from './utils.js'
 
 /*
   * [base]                            [user]   [repo]     [branch] [path]
   * https://raw.githubusercontent.com /iconify /icon-sets /master  /collections.json
- */
+*/
 function Ikoni(opts = {}) {
     const _ = Object.assign({
         svg: false,
@@ -29,17 +20,16 @@ function Ikoni(opts = {}) {
         /** Name of selector ex. tag, class, data-icon */
         namespace: 'any-icon',
         /** Where remote files located */
-        remote: 'https://raw.githubusercontent.com/iconify/icon-sets/master/json'
+        remote: 'https://raw.githubusercontent.com/iconify/icon-sets/master/json',
+        /** Custom size classes for icons */
+        sizes: {
+            'small': '.875rem',
+            'medium': '1.125rem',
+            'large': '1.375rem',
+        }
     }, opts)
 
     const toDataUri = ({ pathData, width, height }) => svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ width } ${ height ?? width }">${ pathData }</svg>`)
-
-    async function saveFile(filepath, content) {
-        try {
-            await Fs.ensureFile(filepath)
-            await Fs.writeFile(filepath, content, 'utf8')
-        } catch { }
-    }
 
     async function _fetch(iconNames, shouldCache) {
 
@@ -52,7 +42,6 @@ function Ikoni(opts = {}) {
                 let file = await Fs.readFile(`${ _.outdir }/${ collection }.json`, 'utf8')
                 iconSets.push(JSON.parse(file))
                 console.log('💾', `${ collection }.json`)
-
             } catch { isLocal = false }
 
             if (!isLocal) {
@@ -82,7 +71,6 @@ function Ikoni(opts = {}) {
                     console.log('Invalid collectionName or iconName got: ', collectionName, iconName)
                     return
                 }
-
                 let currentSet = iconSets.find(i => i.prefix === collectionName)
                 /**
                  * Checks for found icon
@@ -122,7 +110,6 @@ function Ikoni(opts = {}) {
     function css(strings) {
         // $FlowFixMe: Flow doesn't undestand .raw
         var raw = typeof strings === "string" ? [strings] : strings.raw
-
         // first, perform interpolation
         var result = ""
         for (var i = 0;i < raw.length;i++) {
@@ -180,9 +167,7 @@ function Ikoni(opts = {}) {
             let resolved = await Promise.all(iconsets)
             let data = await createIconsData(resolved)
 
-            let variables = css`:root {
-            ${ data.map(({ declaration }) => declaration).join('\n') }
-            }`
+            let variables = css`:root { ${ data.map(({ declaration }) => declaration).join('\n') } }`
 
             let classes = css`:where(${ _.namespace }) { 
                 display: inline-block;
@@ -195,17 +180,24 @@ function Ikoni(opts = {}) {
                 /* --fill: 270 42% 66%; */
                 /* --opacity: 1; */
                 /* background-color: var(--hex, hsl(var(--fill) / var(--opacity))); */
+                
             }`
-
+            if (_?.sizes) {
+                classes += css`${ Object.entries(_.sizes).map(([size, value]) => `${ _.namespace }[${ size }] { --size: ${ value }; }`).join('\n') }`
+            }
             /**
              * @see https://codepen.io/noahblon/post/coloring-svgs-in-css-background-images#css-masks-1
              */
             classes += css`\n${ data.map(
                 ({ selector, variable, icon }) => css`
-                :where(${ selector }, [data-ikoni="${ icon }"], [${ icon }]) {
+                :where([${ icon }]) {
                     -webkit-mask: var(${ variable });
                     mask: var(${ variable }); ${ _.preserve ? `background-image: var(${ variable });` : '' }}`.trim()
             ).join('\n') }`
+
+            let cd = await generateCustomData(_.namespace, data)
+
+            await saveFile('./icons/ikoni-data.json', JSON.stringify(cd, null, 4))
 
             if (_.shouldSave) {
                 await saveFile(`${ _.outdir }/variables.css`, variables)
@@ -222,3 +214,10 @@ function Ikoni(opts = {}) {
 }
 
 export default Ikoni
+
+// classes += css`\n${ data.map(
+//     ({ selector, variable, icon }) => css`
+//     :where(${ selector }, [data-ikoni="${ icon }"], [${ icon }]) {
+//         -webkit-mask: var(${ variable });
+//         mask: var(${ variable }); ${ _.preserve ? `background-image: var(${ variable });` : '' }}`.trim()
+// ).join('\n') }`
